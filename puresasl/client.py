@@ -1,8 +1,9 @@
 from functools import wraps
 from warnings import warn
 
-import puresasl.mechanisms as mech_mod
-from puresasl import SASLError, QOP, SASLWarning
+from . import mechanisms as mech_mod
+from .exceptions import SASLError, SASLWarning
+from .qop import QOP
 
 
 def _require_mech(f):

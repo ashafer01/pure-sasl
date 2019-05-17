@@ -5,7 +5,6 @@ from setuptools import setup
 
 import platform
 import puresasl
-import sys
 
 setup(name='pure-sasl',
       version=puresasl.__version__,
@@ -22,7 +21,7 @@ provided.""",
       license='MIT',
       url='http://github.com/thobbs/pure-sasl',
       keywords='sasl',
-      packages=['puresasl'],
+      packages=['puresasl', 'puresasl.mechanisms'],
       extras_require={
           'GSSAPI':  ["winkerberos==0.7.0"] if platform.system() == 'Windows' else ['kerberos>=1.3.0']
       },
