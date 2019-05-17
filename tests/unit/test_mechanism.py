@@ -6,7 +6,11 @@ except ImportError:
 import base64
 import hashlib
 import hmac
-import kerberos
+import platform
+if platform.system() == 'Windows':
+    import winkerberos as kerberos
+else:
+    import kerberos
 
 from mock import patch
 import six
@@ -77,6 +81,7 @@ class PlainTextMechanismTest(_BaseMechanismTests):
         response = sasl.process(challenge)
         self.assertEqual(response, six.b('{0}\x00{1}\x00{2}'.format(identity, self.username, self.password)))
         self.assertIsInstance(response, six.binary_type)
+        self.assertTrue(sasl.complete)
 
         # Test that the sasl authorization_id has priority over identity
         auth_id = 'user3'
@@ -85,6 +90,7 @@ class PlainTextMechanismTest(_BaseMechanismTests):
         response = sasl.process(challenge)
         self.assertEqual(response, six.b('{0}\x00{1}\x00{2}'.format(auth_id, self.username, self.password)))
         self.assertIsInstance(response, six.binary_type)
+        self.assertTrue(sasl.complete)
 
     def test_wrap_unwrap(self):
         msg = 'msg'
@@ -195,6 +201,7 @@ class CramMD5MechanismTest(_BaseMechanismTests):
         self.assertIn(six.b(self.username), response)
         self.assertIn(six.b(hash.hexdigest()), response)
         self.assertIsInstance(response, six.binary_type)
+        self.assertTrue(self.sasl.complete)
 
     def test_wrap_unwrap(self):
         msg = 'msg'
@@ -219,11 +226,34 @@ class DigestMD5MechanismTest(_BaseMechanismTests):
 
     def test_process(self):
         testChallenge = (
-            'nonce="rmD6R8aMYVWH+/ih9HGBr3xNGAR6o2DUxpKlgDz6gUQ=",r'
-            'ealm="example.org",qop="auth,auth-int,auth-conf",cipher="rc4-40,rc'
-            '4-56,rc4,des,3des",maxbuf=65536,charset=utf-8,algorithm=md5-sess'
+            b'nonce="rmD6R8aMYVWH+/ih9HGBr3xNGAR6o2DUxpKlgDz6gUQ=",r'
+            b'ealm="example.org",qop="auth,auth-int,auth-conf",cipher="rc4-40,rc'
+            b'4-56,rc4,des,3des",maxbuf=65536,charset=utf-8,algorithm=md5-sess'
         )
         self.sasl.process(testChallenge)
+
+    def test_process_server_answer(self):
+        sasl_kwargs = {'username': "chris", 'password': "secret"}
+        sasl = SASLClient('elwood.innosoft.com',
+                          service="imap",
+                          mechanism=self.mechanism_class.name,
+                          mutual_auth=True,
+                          **sasl_kwargs)
+        testChallenge = (
+            b'utf-8,username="chris",realm="elwood.innosoft.com",'
+            b'nonce="OA6MG9tEQGm2hh",nc=00000001,cnonce="OA6MHXh6VqTrRk",'
+            b'digest-uri="imap/elwood.innosoft.com",'
+            b'response=d388dad90d4bbd760a152321f2143af7,qop=auth'
+        )
+        sasl.process(testChallenge)
+        # cnonce is generated randomly so we have to set it so
+        # we assert the expected value
+        sasl._chosen_mech.cnonce = b"OA6MHXh6VqTrRk"
+
+        serverResponse = (
+            b'rspauth=ea40f60335c427b5527b84dbabcdfffd'
+        )
+        sasl.process(serverResponse)
 
     def test__pick_qop(self):
         # _pick_qop is called by process for DigestMD5

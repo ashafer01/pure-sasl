@@ -1,3 +1,28 @@
+pure-sasl (0.6.1) unstable; urgency=medium
+
+  * Import platform in setup.py
+
+ -- Tyler Hobbs <tylerlhobbs@gmail.com>  Thu, 21 Feb 2019 15:50:20 -0600
+
+pure-sasl (0.6.0) unstable; urgency=medium
+
+  * Add support for Window via winkerberos
+
+ -- Tyler Hobbs <tylerlhobbs@gmail.com>  Thu, 21 Feb 2019 14:13:39 -0600
+
+pure-sasl (0.5.1) unstable; urgency=medium
+
+  * Fixes for DIGEST-MD5, server auth has been completed and is now tested
+  * Both DIGEST-MD5 and CRAM-MD5 properly set the complete flag now
+
+ -- Alex Shafer <ashafer01@gmail.com>  Fri, 18 May 2018 16:34:25 -0600
+
+pure-sasl (0.5.0) unstable; urgency=low
+
+  * Added EXTERNAL mechanism
+
+ -- Alex Shafer <ashafer01@gmail.com>  Thu, 08 Mar 2018 20:54:10 -0800
+
 pure-sasl (0.4.1) unstable; urgency=medium
 
   * Fix QOP checks in python3 (#19)
