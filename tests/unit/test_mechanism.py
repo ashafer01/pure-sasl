@@ -263,7 +263,6 @@ class DigestMD5MechanismTest(_BaseMechanismTests):
         service = 'testing'
         username = b'example'
         password = b'hunter2'
-        realm = b'foo'
 
         # set up a client
         client = SASLClient(host, service,
@@ -307,6 +306,39 @@ class DigestMD5MechanismTest(_BaseMechanismTests):
         self.assertEqual(server_mech.unwrap(msg), msg)
         self.assertEqual(client.wrap(msg), msg)
         self.assertEqual(client.unwrap(msg), msg)
+
+    def test_bad_password(self):
+        host = 'test.example.com'
+        service = 'testing'
+        username = b'example'
+        password = b'hunter2'
+
+        # set up a client
+        client = SASLClient(host, service,
+                            mechanism=DigestMD5Mechanism.name,
+                            username=username,
+                            password=b'wrong password')
+
+        # set up a server
+
+        # this function must be supplied to look up expected password hashes
+        # for the test we just generate it again
+        def _get_pw_hash(mech, user, realm=''):
+            if mech != DigestMD5Mechanism.name:
+                raise SASLError('Unhandled mechanism')
+            if user == username:
+                return DigestMD5Mechanism.gen_key_hash(username, password, realm)
+            else:
+                raise SASLAuthenticationFailure('User does not exist')
+
+        server = SASLServer(host, service, get_password_hash=_get_pw_hash)
+        server.begin(client.mechanism)
+
+        step1_challenge = server.process(b'')
+        step2_response = client.process(step1_challenge)
+        self.assertRaises(SASLAuthenticationFailure, server.process, step2_response)
+        self.assertFalse(server.complete)
+        self.assertFalse(client.complete)
 
     def test__pick_qop(self):
         # _pick_qop is called by process_challenge for DigestMD5

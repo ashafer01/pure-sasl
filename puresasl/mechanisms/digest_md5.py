@@ -46,7 +46,33 @@ def quote(text):
 
 
 class DigestMD5Mechanism(Mechanism):
+    """
+    DIGEST-MD5 SASL mechanism with client and server support
 
+    Required and optional keyword arguments are listed below. These should be
+    passed to SASLClient or SASLServer
+
+      Client required:
+        username=
+        password=
+      Client optional:
+        realm=""
+        authorization_id=None
+
+      Server required:
+        get_password_hash=
+          Accepts a function which must retrieve and return the stored password
+          hash, specifially:
+            H( { username-value, ":", realm-value, ":", passwd } )
+          as defined in RFC 2831 sec 2.1.2.1
+          The function will be passed 3 arguments:
+            ("DIGEST-MD5", username, realm)
+          It must raise SASLAuthenticationFailure if the username or realm do
+          not exist.
+          It should raise a SASLError if the mechanism name is not as expected.
+      Server optional:
+        realm=""
+    """
     name = "DIGEST-MD5"
     score = 30
 
@@ -277,9 +303,9 @@ class DigestMD5Mechanism(Mechanism):
     def get_password_hash(self, username):
         if self._get_password_hash is not None:
             return self._get_password_hash(self.name, username, self.realm)
-        raise SASLError('get_password_hash function unavailable; cannot find hash to compare to')
+        raise SASLError('get_password hash function unavailable; cannot validate response')
 
-    def process_response(self, response, key_hash=None):
+    def process_response(self, response):
         """Verify client's step 2 response to the server"""
         if self.nc < 1:
             return self.challenge()
@@ -302,9 +328,7 @@ class DigestMD5Mechanism(Mechanism):
                 raise SASLAuthenticationFailure('digest-uri mismatch')
 
             username = response_dict['username']
-            if key_hash is None:
-                key_hash = self.get_password_hash(username)
-
+            key_hash = self.get_password_hash(username)
             expected_response = self.gen_hash(self._a2, key_hash)
             if response_dict['response'] != expected_response:
                 raise SASLAuthenticationFailure('Bad credentials')
