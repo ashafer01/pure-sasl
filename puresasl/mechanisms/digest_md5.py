@@ -58,7 +58,7 @@ class DigestMD5Mechanism(Mechanism):
         self.username = props.get('username')
         self.password = props.get('password')
         self.authorization_id = props.get('authorization_id', getattr(sasl, 'authorization_id', None))
-        self.realm = props.get('realm', '')
+        self.realm = props.get('realm', b'')
         self._get_password_hash = props.get('get_password_hash')
 
         self._digest_uri = (
@@ -167,17 +167,21 @@ class DigestMD5Mechanism(Mechanism):
             ret[var.decode('ascii')] = val
         return ret
 
+    @staticmethod
+    def gen_key_hash(username, password, realm=''):
+        _key_hash = hashlib.md5()
+        user = to_bytes(username)
+        password = to_bytes(password)
+        realm = to_bytes(realm)
+        kh = user + b':' + realm + b':' + password
+        _key_hash.update(kh)
+        return _key_hash.digest()
+
     def gen_hash(self, a2, key_hash=None):
         if key_hash is None:
             key_hash = getattr(self, 'key_hash', None)
         if not key_hash:
-            _key_hash = hashlib.md5()
-            user = to_bytes(self.username)
-            password = to_bytes(self.password)
-            realm = to_bytes(self.realm)
-            kh = user + b':' + realm + b':' + password
-            _key_hash.update(kh)
-            key_hash = _key_hash.digest()
+            key_hash = self.gen_key_hash(self.username, self.password, self.realm)
             self.key_hash = key_hash
 
         a1 = hashlib.md5(key_hash)
@@ -254,8 +258,6 @@ class DigestMD5Mechanism(Mechanism):
 
     def challenge(self):
         """Create a new challenge on the server side"""
-        if not getattr(self, 'realm', None):
-            self.realm = ''
         if self.nc < 1:
             self.nonce = b64encode(os.urandom(128))
         self.complete = False
@@ -267,7 +269,7 @@ class DigestMD5Mechanism(Mechanism):
             'algorithm': 'md5-sess',
         }
         challenge_list = []
-        for key, val in challenge_dict:
+        for key, val in challenge_dict.items():
             challenge_list.append(to_bytes(key) + b'=' + quote(val))
         self.nc += 1
         return b','.join(challenge_list)
@@ -285,10 +287,12 @@ class DigestMD5Mechanism(Mechanism):
         try:
             if self.nc != int(response_dict['nc'], 16):
                 raise SASLAuthenticationFailure('nc mismatch, possible replay attack')
-            response_dict.setdefault('realm', '')
+
+            response_dict.setdefault('realm', b'')
             for attr in 'nonce', 'realm':
                 if getattr(self, attr) != response_dict[attr]:
                     raise SASLAuthenticationFailure('%s mismatch' % attr)
+
             if self.nc == 1:
                 self.cnonce = response_dict['cnonce']
             response_dict.setdefault('qop', QOP.AUTH)
@@ -307,6 +311,6 @@ class DigestMD5Mechanism(Mechanism):
 
             self.complete = True
             self.username = username
-            return to_bytes('rspauth') + b':' + self.gen_hash(b':' + self._digest_uri, key_hash)
+            return to_bytes('rspauth') + b'=' + self.gen_hash(b':' + self._digest_uri, key_hash)
         except KeyError as e:
             raise SASLAuthenticationFailure('missing required response key %s' % e.args[0])

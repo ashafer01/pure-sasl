@@ -23,11 +23,15 @@ class SASLServer(object):
         ...     # begin the challenge-response exchange
         ...     sasl.begin(mechanism)
         ...     while True:
-        ...         challenge = sasl.process(response_bytes)
+        ...         try:
+        ...             challenge = sasl.process(response_bytes)
+        ...         except SASLAuthenticationFailure as e:
+        ...             print('Could not authenticate user: {}'.format(e))
+        ...             return False
         ...         if challenge:
         ...             writer.write(challenge)
         ...         if sasl.complete:
-        ...             #
+        ...             # authentication has completed successfully
         ...             break
         ...         else:
         ...             # assume subsequent messages only contain the response

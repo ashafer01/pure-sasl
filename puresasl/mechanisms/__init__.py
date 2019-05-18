@@ -18,5 +18,5 @@ if have_kerberos:
 
 server_mechanisms = {}
 for name, cls in mechanisms.items():
-    if hasattr(cls, 'challenge') and hasattr(cls, 'verify_response'):
+    if hasattr(cls, 'process_response'):
         server_mechanisms[name] = cls

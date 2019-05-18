@@ -7,18 +7,20 @@ import base64
 import hashlib
 import hmac
 import platform
-if platform.system() == 'Windows':
-    import winkerberos as kerberos
-else:
-    import kerberos
-
 from mock import patch
 import six
 import struct
 
-from puresasl import SASLProtocolException, QOP
 from puresasl.client import SASLClient
+from puresasl.server import SASLServer
+from puresasl.exceptions import *
+from puresasl.qop import QOP
 from puresasl.mechanisms import AnonymousMechanism, PlainMechanism, GSSAPIMechanism, DigestMD5Mechanism, CramMD5Mechanism, ExternalMechanism
+
+if platform.system() == 'Windows':
+    import winkerberos as kerberos
+else:
+    import kerberos
 
 
 class _BaseMechanismTests(unittest.TestCase):
@@ -255,6 +257,56 @@ class DigestMD5MechanismTest(_BaseMechanismTests):
             b'rspauth=ea40f60335c427b5527b84dbabcdfffd'
         )
         sasl.process(serverResponse)
+
+    def test_server_client_challenge_response_sequence(self):
+        host = 'test.example.com'
+        service = 'testing'
+        username = b'example'
+        password = b'hunter2'
+        realm = b'foo'
+
+        # set up a client
+        client = SASLClient(host, service,
+                            mechanism=DigestMD5Mechanism.name,
+                            username=username,
+                            password=password)
+
+        # set up a server
+
+        # this function must be supplied to look up expected password hashes
+        # for the test we just generate it again
+        def _get_pw_hash(mech, user, realm=''):
+            if mech != DigestMD5Mechanism.name:
+                raise SASLError('Unhandled mechanism')
+            if user == username:
+                return DigestMD5Mechanism.gen_key_hash(username, password, realm)
+            else:
+                raise SASLAuthenticationFailure('User does not exist')
+
+        server = SASLServer(host, service, get_password_hash=_get_pw_hash)
+        self.assertIn(client.mechanism, server.available_mechanisms())
+
+        # start the challenge-response sequence
+        server.begin(client.mechanism)
+
+        # empty response causes initial challenge to be created
+        step1_challenge = server.process(b'')
+
+        step2_response = client.process(step1_challenge)
+        step3_challenge = server.process(step2_response)
+        self.assertTrue(server.complete)
+        client.process(step3_challenge)
+        self.assertTrue(client.complete)
+
+        # end the challenge-response sequence
+        server_mech = server.end()
+
+        # ensure auth QOP isn't changing messages
+        msg = b'foo'
+        self.assertEqual(server_mech.wrap(msg), msg)
+        self.assertEqual(server_mech.unwrap(msg), msg)
+        self.assertEqual(client.wrap(msg), msg)
+        self.assertEqual(client.unwrap(msg), msg)
 
     def test__pick_qop(self):
         # _pick_qop is called by process_challenge for DigestMD5
