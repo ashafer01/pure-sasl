@@ -57,12 +57,12 @@ class DigestMD5Mechanism(Mechanism):
         Mechanism.__init__(self, sasl)
         self.username = props.get('username')
         self.password = props.get('password')
-        self.authorization_id = props.get('authorization_id', self.sasl.authorization_id)
+        self.authorization_id = props.get('authorization_id', getattr(sasl, 'authorization_id', None))
         self.realm = props.get('realm', '')
         self._get_password_hash = props.get('get_password_hash')
 
         self._digest_uri = (
-                to_bytes(self.sasl.service) + b'/' + to_bytes(self.sasl.host))
+                to_bytes(sasl.service) + b'/' + to_bytes(sasl.host))
         self._a2 = b'AUTHENTICATE:' + self._digest_uri
 
         self.nc = 0
@@ -258,6 +258,7 @@ class DigestMD5Mechanism(Mechanism):
             self.realm = ''
         if self.nc < 1:
             self.nonce = b64encode(os.urandom(128))
+        self.complete = False
         challenge_dict = {
             'realm': self.realm,
             'nonce': self.nonce,
@@ -279,7 +280,7 @@ class DigestMD5Mechanism(Mechanism):
     def process_response(self, response, key_hash=None):
         """Verify client's step 2 response to the server"""
         if self.nc < 1:
-            raise SASLError('create_challenge() must be called before verify_response()')
+            return self.challenge()
         response_dict = self.parse_challenge(response)
         try:
             if self.nc != int(response_dict['nc'], 16):
@@ -295,6 +296,7 @@ class DigestMD5Mechanism(Mechanism):
                 raise SASLAuthenticationFailure('Invalid or unsupported qop %s' % response_dict['qop'])
             if self._digest_uri != response_dict.get('digest-uri', self._digest_uri):
                 raise SASLAuthenticationFailure('digest-uri mismatch')
+
             username = response_dict['username']
             if key_hash is None:
                 key_hash = self.get_password_hash(username)
@@ -302,6 +304,9 @@ class DigestMD5Mechanism(Mechanism):
             expected_response = self.gen_hash(self._a2, key_hash)
             if response_dict['response'] != expected_response:
                 raise SASLAuthenticationFailure('Bad credentials')
-            return True
+
+            self.complete = True
+            self.username = username
+            return to_bytes('rspauth') + b':' + self.gen_hash(b':' + self._digest_uri, key_hash)
         except KeyError as e:
             raise SASLAuthenticationFailure('missing required response key %s' % e.args[0])
