@@ -50,7 +50,7 @@ class Mechanism(object):
     def __init__(self, sasl, **props):
         self.sasl = sasl
 
-    def process(self, challenge=None):
+    def process_challenge(self, challenge=None):
         """
         Process a challenge request and return the response.
 

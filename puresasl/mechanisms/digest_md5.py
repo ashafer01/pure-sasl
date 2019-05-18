@@ -1,9 +1,11 @@
 import hashlib
 import random
+import os
 import sys
+from base64 import b64encode
 
 from .base import Mechanism
-from ..exceptions import SASLProtocolException
+from ..exceptions import *
 from ..qop import QOP
 
 
@@ -40,7 +42,7 @@ def quote(text):
     :param text: A Unicode or byte string.
     """
     text = to_bytes(text)
-    return b'"' + text.replace(b'\\', b'\\\\').replace(b'"', b'\\"') + b'"'
+    return b'"' + text.replace(b'\\', b'\\\\').replace(b'"', b'\\"').replace(b'<', b'\\<').replace(b'>', b'\\>') + b'"'
 
 
 class DigestMD5Mechanism(Mechanism):
@@ -51,17 +53,22 @@ class DigestMD5Mechanism(Mechanism):
     allows_anonymous = False
     uses_plaintext = False
 
-    def __init__(self, sasl, username=None, password=None, **props):
+    def __init__(self, sasl, **props):
         Mechanism.__init__(self, sasl)
-        self.username = username
-        self.password = password
+        self.username = props.get('username')
+        self.password = props.get('password')
+        self.authorization_id = props.get('authorization_id', self.sasl.authorization_id)
+        self.realm = props.get('realm', '')
+        self._get_password_hash = props.get('get_password_hash')
 
-        self._digest_uri = None
-        self._a1 = None
+        self._digest_uri = (
+                to_bytes(self.sasl.service) + b'/' + to_bytes(self.sasl.host))
+        self._a2 = b'AUTHENTICATE:' + self._digest_uri
+
+        self.nc = 0
 
     def dispose(self):
         self._digest_uri = None
-        self._a1 = None
 
         self.password = None
         self.key_hash = None
@@ -70,37 +77,27 @@ class DigestMD5Mechanism(Mechanism):
         self.cnonce = None
         self.nc = 0
 
-    def wrap(self, outgoing):
-        return outgoing
-
-    def unwrap(self, incoming):
-        return incoming
-
     def response(self):
         required_props = ['username']
         if not getattr(self, 'key_hash', None):
             required_props.append('password')
         self._fetch_properties(*required_props)
 
-        resp = {}
-        resp['qop'] = self.qop
-
-        if getattr(self, 'realm', None) is not None:
-            resp['realm'] = quote(self.realm)
-
-        resp['username'] = quote(to_bytes(self.username))
-        resp['nonce'] = quote(self.nonce)
         if self.nc == 0:
             self.cnonce = to_bytes('%s' % random.random())[2:]
-        resp['cnonce'] = quote(self.cnonce)
         self.nc += 1
-        resp['nc'] = to_bytes('%08x' % self.nc)
 
-        self._digest_uri = (
-                to_bytes(self.sasl.service) + b'/' + to_bytes(self.sasl.host))
-        resp['digest-uri'] = quote(self._digest_uri)
+        resp = {
+            'qop': self.qop,
+            'realm': quote(self.realm),
+            'username': quote(to_bytes(self.username)),
+            'nonce': quote(self.nonce),
+            'digest-uri': quote(self._digest_uri),
+            'cnonce': quote(self.cnonce),
+            'nc': to_bytes('%08x' % self.nc),
+        }
 
-        a2 = b'AUTHENTICATE:' + self._digest_uri
+        a2 = self._a2
         if self.qop != QOP.AUTH:
             a2 += b':00000000000000000000000000000000'
             resp['maxbuf'] = b'16777215'  # 2**24-1
@@ -170,21 +167,26 @@ class DigestMD5Mechanism(Mechanism):
             ret[var.decode('ascii')] = val
         return ret
 
-    def gen_hash(self, a2):
-        if not getattr(self, 'key_hash', None):
-            key_hash = hashlib.md5()
+    def gen_hash(self, a2, key_hash=None):
+        if key_hash is None:
+            key_hash = getattr(self, 'key_hash', None)
+        if not key_hash:
+            _key_hash = hashlib.md5()
             user = to_bytes(self.username)
             password = to_bytes(self.password)
             realm = to_bytes(self.realm)
             kh = user + b':' + realm + b':' + password
-            key_hash.update(kh)
-            self.key_hash = key_hash.digest()
+            _key_hash.update(kh)
+            key_hash = _key_hash.digest()
+            self.key_hash = key_hash
 
-        a1 = hashlib.md5(self.key_hash)
+        a1 = hashlib.md5(key_hash)
         a1h = b':' + self.nonce + b':' + self.cnonce
         a1.update(a1h)
+        if self.authorization_id:
+            a1.update(b':' + to_bytes(self.authorization_id))
         response = hashlib.md5()
-        self._a1 = a1.digest()
+        _a1 = a1.digest()
         rv = to_bytes(a1.hexdigest().lower())
         rv += b':' + self.nonce
         rv += b':' + to_bytes('%08x' % self.nc)
@@ -201,7 +203,7 @@ class DigestMD5Mechanism(Mechanism):
         if self.gen_hash(a2) != cmp_hash:
             raise SASLProtocolException('Invalid server auth response')
 
-    def process(self, challenge=None):
+    def process_challenge(self, challenge=None):
         if challenge is None:
             needed = ['username', 'realm', 'nonce', 'key_hash',
                       'nc', 'cnonce', 'qops']
@@ -210,7 +212,7 @@ class DigestMD5Mechanism(Mechanism):
             else:
                 return None
 
-        challenge_dict = DigestMD5Mechanism.parse_challenge(challenge)
+        challenge_dict = self.parse_challenge(challenge)
         if 'rspauth' in challenge_dict:
             self.authenticate_server(challenge_dict['rspauth'])
             self.complete = True
@@ -231,7 +233,6 @@ class DigestMD5Mechanism(Mechanism):
             if key in challenge_dict:
                 setattr(self, key, challenge_dict[key])
 
-        self.nc = 0
         if 'qop' in challenge_dict:
             server_offered_qops = [
                 x.strip() for x in challenge_dict['qop'].split(b',')
@@ -248,3 +249,59 @@ class DigestMD5Mechanism(Mechanism):
         # MUST appear exactly once; if not present, or if multiple instances
         # are present, the client should abort the authentication exchange.
         return self.response()
+
+    # server methods
+
+    def challenge(self):
+        """Create a new challenge on the server side"""
+        if not getattr(self, 'realm', None):
+            self.realm = ''
+        if self.nc < 1:
+            self.nonce = b64encode(os.urandom(128))
+        challenge_dict = {
+            'realm': self.realm,
+            'nonce': self.nonce,
+            'qop': QOP.AUTH,
+            'charset': 'utf-8',
+            'algorithm': 'md5-sess',
+        }
+        challenge_list = []
+        for key, val in challenge_dict:
+            challenge_list.append(to_bytes(key) + b'=' + quote(val))
+        self.nc += 1
+        return b','.join(challenge_list)
+
+    def get_password_hash(self, username):
+        if self._get_password_hash is not None:
+            return self._get_password_hash(self.name, username, self.realm)
+        raise SASLError('get_password_hash function unavailable; cannot find hash to compare to')
+
+    def process_response(self, response, key_hash=None):
+        """Verify client's step 2 response to the server"""
+        if self.nc < 1:
+            raise SASLError('create_challenge() must be called before verify_response()')
+        response_dict = self.parse_challenge(response)
+        try:
+            if self.nc != int(response_dict['nc'], 16):
+                raise SASLAuthenticationFailure('nc mismatch, possible replay attack')
+            response_dict.setdefault('realm', '')
+            for attr in 'nonce', 'realm':
+                if getattr(self, attr) != response_dict[attr]:
+                    raise SASLAuthenticationFailure('%s mismatch' % attr)
+            if self.nc == 1:
+                self.cnonce = response_dict['cnonce']
+            response_dict.setdefault('qop', QOP.AUTH)
+            if response_dict['qop'] != QOP.AUTH:
+                raise SASLAuthenticationFailure('Invalid or unsupported qop %s' % response_dict['qop'])
+            if self._digest_uri != response_dict.get('digest-uri', self._digest_uri):
+                raise SASLAuthenticationFailure('digest-uri mismatch')
+            username = response_dict['username']
+            if key_hash is None:
+                key_hash = self.get_password_hash(username)
+
+            expected_response = self.gen_hash(self._a2, key_hash)
+            if response_dict['response'] != expected_response:
+                raise SASLAuthenticationFailure('Bad credentials')
+            return True
+        except KeyError as e:
+            raise SASLAuthenticationFailure('missing required response key %s' % e.args[0])

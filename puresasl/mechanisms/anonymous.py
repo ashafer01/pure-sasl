@@ -10,6 +10,6 @@ class AnonymousMechanism(Mechanism):
 
     uses_plaintext = False
 
-    def process(self, challenge=None):
+    def process_challenge(self, challenge=None):
         self.complete = True
         return b'Anonymous, None'

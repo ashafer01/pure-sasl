@@ -15,6 +15,13 @@ class SASLProtocolException(Exception):
     pass
 
 
+class SASLAuthenticationFailure(Exception):
+    """
+    Raised when a server declines to authenticate a client
+    """
+    pass
+
+
 class SASLWarning(Warning):
     """
     Emitted in potentially fatal circumstances.

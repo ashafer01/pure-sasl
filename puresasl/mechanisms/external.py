@@ -10,6 +10,6 @@ class ExternalMechanism(Mechanism):
     name = 'EXTERNAL'
     score = 10
 
-    def process(self, challenge=None):
+    def process_challenge(self, challenge=None):
         self.complete = True
         return b''

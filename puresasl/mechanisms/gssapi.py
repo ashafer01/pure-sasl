@@ -49,7 +49,7 @@ class GSSAPIMechanism(Mechanism):
                 raise Exception("Error: kerberos library does not support principal.")
             _, self.context = kerberos.authGSSClientInit(service=krb_service)
 
-    def process(self, challenge=None):
+    def process_challenge(self, challenge=None):
         if not self._have_negotiated_details:
             kerberos.authGSSClientStep(self.context, '')
             _negotiated_details = kerberos.authGSSClientResponse(self.context)

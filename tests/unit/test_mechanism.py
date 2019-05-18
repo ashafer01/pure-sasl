@@ -257,6 +257,6 @@ class DigestMD5MechanismTest(_BaseMechanismTests):
         sasl.process(serverResponse)
 
     def test__pick_qop(self):
-        # _pick_qop is called by process for DigestMD5
+        # _pick_qop is called by process_challenge for DigestMD5
         # assert that it chose the only supported mech
         self.assertEqual(self.sasl.qop, QOP.AUTH)

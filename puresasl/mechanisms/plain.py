@@ -16,7 +16,7 @@ class PlainMechanism(Mechanism):
         self.username = username
         self.password = password
 
-    def process(self, challenge=None):
+    def process_challenge(self, challenge=None):
         self._fetch_properties('username', 'password')
         self.complete = True
         auth_id = self.sasl.authorization_id or self.identity

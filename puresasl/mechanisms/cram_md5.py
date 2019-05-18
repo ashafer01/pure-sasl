@@ -17,7 +17,7 @@ class CramMD5Mechanism(PlainMechanism):
         self.username = username
         self.password = password
 
-    def process(self, challenge=None):
+    def process_challenge(self, challenge=None):
         if challenge is None:
             return None
 

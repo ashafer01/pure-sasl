@@ -146,7 +146,7 @@ class SASLClient(object):
         with a `challenge` of ``None`` to generate the first message
         to be sent to the server.
         """
-        return self._chosen_mech.process(challenge)
+        return self._chosen_mech.process_challenge(challenge)
 
     @_require_mech
     def wrap(self, outgoing):

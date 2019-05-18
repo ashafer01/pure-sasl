@@ -15,3 +15,8 @@ mechanisms = dict((m.name, m) for m in (
 
 if have_kerberos:
     mechanisms[GSSAPIMechanism.name] = GSSAPIMechanism
+
+server_mechanisms = {}
+for name, cls in mechanisms.items():
+    if hasattr(cls, 'challenge') and hasattr(cls, 'verify_response'):
+        server_mechanisms[name] = cls
