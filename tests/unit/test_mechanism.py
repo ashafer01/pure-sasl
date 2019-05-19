@@ -62,7 +62,7 @@ class AnonymousMechanismTest(_BaseMechanismTests):
     def test_challenge_response_sequence(self):
         host = 'test.example.com'
         service = 'testing'
-        client = SASLClient(host, service, mechanism=AnonymousMechanism.name)
+        client = SASLClient(host, service, mechanism=self.mechanism_class.name)
         server = SASLServer(host, service)
         server.begin(client.mechanism)
         init_res = client.process()
@@ -174,6 +174,19 @@ class ExternalMechanismTest(_BaseMechanismTests):
 
     def test_process(self):
         self.assertIs(self.sasl.process(), b'')
+
+    def test_challenge_response_sequence(self):
+        host = 'test.example.com'
+        service = 'testing'
+        client = SASLClient(host, service, mechanism=self.mechanism_class.name)
+        server = SASLServer(host, service)
+        server.begin(client.mechanism)
+        init_res = client.process()
+        self.assertTrue(client.complete)
+        server.process(init_res)
+        self.assertTrue(server.complete)
+        server_mech = server.end()
+        self.assertEqual(init_res.decode('utf-8'), server_mech.authzid)
 
 
 @patch('puresasl.mechanisms.gssapi.kerberos.authGSSClientStep')
