@@ -2,10 +2,9 @@ import hashlib
 import hmac
 
 from .base import Mechanism, _b
-from .plain import PlainMechanism
 
 
-class CramMD5Mechanism(PlainMechanism):
+class CramMD5Mechanism(Mechanism):
     name = "CRAM-MD5"
     score = 20
 
