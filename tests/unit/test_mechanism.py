@@ -59,6 +59,19 @@ class AnonymousMechanismTest(_BaseMechanismTests):
 
     mechanism_class = AnonymousMechanism
 
+    def test_challenge_response_sequence(self):
+        host = 'test.example.com'
+        service = 'testing'
+        client = SASLClient(host, service, mechanism=AnonymousMechanism.name)
+        server = SASLServer(host, service)
+        server.begin(client.mechanism)
+        init_res = client.process()
+        self.assertTrue(client.complete)
+        server.process(init_res)
+        self.assertTrue(server.complete)
+        server_mech = server.end()
+        self.assertEqual(init_res.decode('utf-8'), server_mech.message)
+
 
 class PlainTextMechanismTest(_BaseMechanismTests):
 
@@ -95,10 +108,64 @@ class PlainTextMechanismTest(_BaseMechanismTests):
         self.assertIsInstance(response, six.binary_type)
         self.assertTrue(sasl.complete)
 
-    def test_wrap_unwrap(self):
-        msg = 'msg'
-        self.assertIs(self.sasl.wrap(msg), msg)
-        self.assertIs(self.sasl.unwrap(msg), msg)
+    def test_challenge_response_sequence(self):
+        host = 'test.example.com'
+        service = 'testing'
+        username = 'example'
+        password = '123654b'
+        authzid = 'other'
+
+        client = SASLClient(host, service,
+                            mechanism=PlainMechanism.name,
+                            username=username,
+                            password=password,
+                            identity=authzid)
+
+        def _check_pw(user, pw):
+            if user.decode('utf-8') != username:
+                raise SASLAuthenticationFailure('user does not exist')
+            if pw.decode('utf-8') != password:
+                raise SASLAuthenticationFailure('Password mismatch')
+
+        server = SASLServer(host, service, check_password=_check_pw)
+
+        server.begin(client.mechanism)
+        init_res = client.process()
+        self.assertTrue(client.complete)
+        server.process(init_res)
+        self.assertTrue(server.complete)
+
+        server_mech = server.end()
+
+        self.assertEqual(server_mech.identity, authzid)
+
+    def test_bad_password(self):
+        host = 'test.example.com'
+        service = 'testing'
+        username = b'example'
+        password = b'123654b'
+        authzid = b'other'
+
+        client = SASLClient(host, service,
+                            mechanism=PlainMechanism.name,
+                            username=username,
+                            password='wrong password',
+                            identity=authzid)
+
+        def _check_pw(user, pw):
+            if user != username:
+                raise SASLAuthenticationFailure('user not exist')
+            if pw != password:
+                raise SASLAuthenticationFailure('Password mismatch')
+
+        server = SASLServer(host, service, check_password=_check_pw)
+
+        server.begin(client.mechanism)
+        init_res = client.process()
+        self.assertTrue(client.complete)
+
+        self.assertRaises(SASLAuthenticationFailure, server.process, init_res)
+        self.assertFalse(server.complete)
 
 
 class ExternalMechanismTest(_BaseMechanismTests):
@@ -107,11 +174,6 @@ class ExternalMechanismTest(_BaseMechanismTests):
 
     def test_process(self):
         self.assertIs(self.sasl.process(), b'')
-
-    def test_wrap_unwrap(self):
-        msg = 'msg'
-        self.assertIs(self.sasl.wrap(msg), msg)
-        self.assertIs(self.sasl.unwrap(msg), msg)
 
 
 @patch('puresasl.mechanisms.gssapi.kerberos.authGSSClientStep')
@@ -206,11 +268,6 @@ class CramMD5MechanismTest(_BaseMechanismTests):
         self.assertIsInstance(response, six.binary_type)
         self.assertTrue(self.sasl.complete)
 
-    def test_wrap_unwrap(self):
-        msg = 'msg'
-        self.assertIs(self.sasl.wrap(msg), msg)
-        self.assertIs(self.sasl.unwrap(msg), msg)
-
 
 class DigestMD5MechanismTest(_BaseMechanismTests):
 
@@ -218,11 +275,6 @@ class DigestMD5MechanismTest(_BaseMechanismTests):
     username = 'user'
     password = 'pass'
     sasl_kwargs = {'username': username, 'password': password}
-
-    def test_wrap_unwrap(self):
-        msg = 'msg'
-        self.assertIs(self.sasl.wrap(msg), msg)
-        self.assertIs(self.sasl.unwrap(msg), msg)
 
     def test_process_basic(self, *args):
         pass
@@ -274,9 +326,7 @@ class DigestMD5MechanismTest(_BaseMechanismTests):
 
         # this function must be supplied to look up expected password hashes
         # for the test we just generate it again
-        def _get_pw_hash(mech, user, realm=''):
-            if mech != DigestMD5Mechanism.name:
-                raise SASLError('Unhandled mechanism')
+        def _get_pw_hash(user, realm=''):
             if user == username:
                 return DigestMD5Mechanism.gen_key_hash(username, password, realm)
             else:
@@ -323,9 +373,7 @@ class DigestMD5MechanismTest(_BaseMechanismTests):
 
         # this function must be supplied to look up expected password hashes
         # for the test we just generate it again
-        def _get_pw_hash(mech, user, realm=''):
-            if mech != DigestMD5Mechanism.name:
-                raise SASLError('Unhandled mechanism')
+        def _get_pw_hash(user, realm=''):
             if user == username:
                 return DigestMD5Mechanism.gen_key_hash(username, password, realm)
             else:

@@ -65,11 +65,10 @@ class DigestMD5Mechanism(Mechanism):
           hash, specifially:
             H( { username-value, ":", realm-value, ":", passwd } )
           as defined in RFC 2831 sec 2.1.2.1
-          The function will be passed 3 arguments:
-            ("DIGEST-MD5", username, realm)
+          The function will be passed 2 arguments:
+            (username, realm)
           It must raise SASLAuthenticationFailure if the username or realm do
           not exist.
-          It should raise a SASLError if the mechanism name is not as expected.
       Server optional:
         realm=""
     """
@@ -302,7 +301,7 @@ class DigestMD5Mechanism(Mechanism):
 
     def get_password_hash(self, username):
         if self._get_password_hash is not None:
-            return self._get_password_hash(self.name, username, self.realm)
+            return self._get_password_hash(username, self.realm)
         raise SASLError('get_password hash function unavailable; cannot validate response')
 
     def process_response(self, response):

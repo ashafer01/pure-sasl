@@ -6,7 +6,10 @@ from ..qop import QOP
 PY3 = sys.version_info[0] == 3
 if PY3:
     def _b(s):
-        return s.encode("utf-8")
+        if isinstance(s, str):
+            return s.encode("utf-8")
+        else:
+            return s
 else:
     def _b(s):
         return s
